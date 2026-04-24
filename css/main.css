@@ -1,0 +1,594 @@
+/* ========================================
+   HUD Mirror — Native HUD Design System
+   Kkot-bun (Frontend Lead) Design Framework
+   ======================================== */
+
+:root {
+  /* HUD Color Palette */
+  --hud-green: #00ff88;
+  --hud-cyan: #00d4ff;
+  --hud-amber: #ffaa00;
+  --hud-red: #ff4444;
+  --hud-bg: #000000;
+  --hud-bg-overlay: rgba(0, 0, 0, 0.75);
+  --hud-text: #ffffff;
+  --hud-text-dim: rgba(255, 255, 255, 0.5);
+
+  /* Typography */
+  --font-mono: 'Courier New', 'Menlo', monospace;
+  --font-ui: -apple-system, 'Segoe UI', sans-serif;
+
+  /* Spacing */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Touch targets — minimum 48px for driving */
+  --touch-min: 48px;
+
+  /* Glow effects */
+  --glow-green: 0 0 12px rgba(0, 255, 136, 0.6);
+  --glow-cyan: 0 0 12px rgba(0, 212, 255, 0.6);
+}
+
+/* ===== Reset ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+body {
+  background: var(--hud-bg);
+  color: var(--hud-text);
+  font-family: var(--font-ui);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ===== Mirror Engine ===== */
+.mirrored {
+  transform: scaleX(-1);
+}
+
+/* Counter-mirror for elements that should read normally in mirror mode */
+.mirror-active .no-mirror {
+  transform: scaleX(-1);
+}
+
+/* ===== #app Layout (3-row: top / map / bottom) ===== */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+/* ===== Safety Warning Overlay ===== */
+#safety-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.safety-box {
+  max-width: 320px;
+  width: 85%;
+  text-align: center;
+  padding: 2rem;
+  background: rgba(10, 10, 20, 0.95);
+  border-radius: 16px;
+  border: 1px solid var(--hud-green);
+  box-shadow: var(--glow-green);
+}
+
+.safety-box h2 {
+  margin-bottom: 1rem;
+  color: var(--hud-green);
+  font-size: 1.4rem;
+}
+
+.safety-box p {
+  margin-bottom: 1.5rem;
+  line-height: 1.7;
+  font-size: 0.95rem;
+  color: #bbb;
+}
+
+.safety-box button {
+  background: var(--hud-green);
+  color: #000;
+  padding: 14px 40px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: var(--touch-min);
+}
+
+/* ===== HUD Top Bar (Time + Compass, symmetric) ===== */
+#hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--hud-bg-overlay);
+  flex-shrink: 0;
+  z-index: 50;
+  min-height: var(--touch-min);
+}
+
+.hud-top-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-top-center {
+  flex: 1;
+  text-align: center;
+}
+
+.hud-top-icon {
+  font-size: 1.1rem;
+}
+
+.hud-top-value {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--hud-green);
+  text-shadow: var(--glow-green);
+  letter-spacing: 1px;
+}
+
+#compass-value {
+  color: var(--hud-cyan);
+  text-shadow: var(--glow-cyan);
+}
+
+#altitude-value {
+  font-size: 0.9rem;
+  color: var(--hud-text-dim);
+}
+
+/* ===== Map Container (fills available space) ===== */
+#map-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--hud-bg);
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* ===== Map Search Overlay ===== */
+#map-search {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+#search-form {
+  display: flex;
+  gap: 6px;
+}
+
+#search-input {
+  flex: 1;
+  background: rgba(20, 20, 40, 0.9);
+  border: 1px solid #333;
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  min-height: var(--touch-min);
+}
+
+#search-input:focus {
+  border-color: var(--hud-cyan);
+}
+
+#search-form button {
+  background: var(--hud-cyan);
+  color: #000;
+  border: none;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+}
+
+#search-close {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+#search-results {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.search-result-item {
+  padding: 14px 16px;
+  background: rgba(20, 20, 40, 0.8);
+  border-bottom: 1px solid #222;
+  cursor: pointer;
+  color: #ddd;
+  font-size: 0.95rem;
+  min-height: var(--touch-min);
+  display: flex;
+  align-items: center;
+}
+
+.search-result-item:active {
+  background: rgba(0, 212, 255, 0.15);
+}
+
+.search-result-name {
+  font-weight: 600;
+  color: #fff;
+}
+
+.search-result-addr {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* ===== Speed Overlay (large, centered on map) ===== */
+#speed-overlay {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  text-align: center;
+  pointer-events: none;
+}
+
+.speed-number {
+  font-family: var(--font-mono);
+  font-size: 4rem;
+  font-weight: 900;
+  color: var(--hud-green);
+  text-shadow: var(--glow-green);
+  line-height: 1;
+}
+
+.speed-unit {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--hud-text-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ===== HUD Bottom Bar ===== */
+#hud-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--hud-bg-overlay);
+  flex-shrink: 0;
+  z-index: 50;
+  gap: 8px;
+  min-height: var(--touch-min);
+}
+
+.hud-bottom-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--hud-text-dim);
+  flex-shrink: 0;
+}
+
+.hud-sep {
+  color: #333;
+}
+
+.hud-bottom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.hud-btn {
+  background: transparent;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: var(--hud-green);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.hud-btn:active {
+  background: rgba(0, 255, 136, 0.15);
+}
+
+#brightness-slider {
+  flex: 1;
+  min-width: 60px;
+  max-width: 120px;
+  accent-color: var(--hud-cyan);
+  height: var(--touch-min);
+}
+
+/* ===== Mirror Active States ===== */
+.mirror-active #btn-mirror {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: var(--hud-green);
+}
+
+/* ===== HUD Mode (fullscreen driving mode) ===== */
+.hud-mode #hud-bottom .hud-bottom-controls {
+  /* In HUD mode, show only essential controls */
+}
+
+.hud-mode #hud-bottom-info {
+  display: flex !important;
+}
+
+.hud-mode #speed-overlay {
+  display: block !important;
+}
+
+.hud-mode .hud-top-value {
+  font-size: 1.5rem;
+}
+
+.hud-mode .speed-number {
+  font-size: 5rem;
+}
+
+.hud-mode #map {
+  filter: brightness(1.2) contrast(1.1) saturate(0.8);
+}
+
+/* ===== Kakao Maps Overrides for HUD dark theme ===== */
+.kakao-control-zoom {
+  position: absolute;
+  bottom: 80px;
+  right: 8px;
+  z-index: 10;
+}
+
+/* 카카오 지도 저작권 숨김 */
+#mCSL, .copyright_info {
+  display: none !important;
+}
+
+/* 카카오 지도 커스텀 마커 스타일 */
+.hud-user-marker {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--hud-cyan);
+  border: 2px solid #fff;
+  box-shadow: 0 0 12px var(--hud-cyan);
+}
+
+/* ===== Turn-by-Turn Navigation Banner ===== */
+#nav-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.8) 100%);
+  border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+  min-height: 72px;
+}
+
+.nav-turn-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.6));
+}
+
+.nav-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-instruction {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-road {
+  font-size: 0.8rem;
+  color: var(--hud-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.nav-eta {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.nav-distance {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--hud-cyan);
+  text-shadow: var(--glow-cyan);
+}
+
+.nav-eta-time {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--hud-text-dim);
+  margin-top: 2px;
+}
+
+.nav-stop-btn {
+  flex-shrink: 0;
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.5);
+  color: var(--hud-red);
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-stop-btn:active {
+  background: rgba(255, 68, 68, 0.4);
+}
+
+/* ===== Navigation Approach Warning (large, centered) ===== */
+#nav-approach {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  text-align: center;
+  pointer-events: none;
+  padding: 16px 32px;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 12px;
+  border: 2px solid var(--hud-amber);
+  box-shadow: 0 0 20px rgba(255, 170, 0, 0.4);
+  display: none;
+}
+
+#nav-approach.active {
+  display: block;
+}
+
+.nav-approach-distance {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  font-weight: 900;
+  color: var(--hud-amber);
+  text-shadow: 0 0 16px rgba(255, 170, 0, 0.6);
+  line-height: 1;
+}
+
+.nav-approach-instruction {
+  font-size: 1rem;
+  color: #fff;
+  margin-top: 6px;
+}
+
+/* ===== HUD Mode Navigation Enhancements ===== */
+.hud-mode #nav-banner {
+  padding: 8px 16px;
+  min-height: 64px;
+}
+
+.hud-mode .nav-turn-icon {
+  font-size: 2.4rem;
+}
+
+.hud-mode .nav-instruction {
+  font-size: 1.3rem;
+}
+
+.hud-mode .nav-distance {
+  font-size: 1.6rem;
+}
+
+.hud-mode #nav-approach .nav-approach-distance {
+  font-size: 4rem;
+}
+
+/* Navigation active state — adjust speed overlay position */
+.nav-active #speed-overlay {
+  bottom: 16px;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+/* ===== Orientation: allow both portrait and landscape ===== */
+@media (orientation: landscape) {
+  #hud-top {
+    padding: 4px 16px;
+    min-height: var(--touch-min);
+  }
+  .hud-top-value {
+    font-size: 1.1rem;
+  }
+  #hud-bottom {
+    padding: 4px 12px;
+    min-height: var(--touch-min);
+  }
+  .hud-btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+  .speed-number {
+    font-size: 3.5rem;
+  }
+}

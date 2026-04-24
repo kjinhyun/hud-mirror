@@ -1,0 +1,2174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#000000">
+  <title>HUD Mirror (Standalone)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+/* ========================================
+   HUD Mirror — Native HUD Design System
+   Kkot-bun (Frontend Lead) Design Framework
+   ======================================== */
+
+:root {
+  /* HUD Color Palette */
+  --hud-green: #00ff88;
+  --hud-cyan: #00d4ff;
+  --hud-amber: #ffaa00;
+  --hud-red: #ff4444;
+  --hud-bg: #000000;
+  --hud-bg-overlay: rgba(0, 0, 0, 0.75);
+  --hud-text: #ffffff;
+  --hud-text-dim: rgba(255, 255, 255, 0.5);
+
+  /* Typography */
+  --font-mono: 'Courier New', 'Menlo', monospace;
+  --font-ui: -apple-system, 'Segoe UI', sans-serif;
+
+  /* Spacing */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Touch targets — minimum 48px for driving */
+  --touch-min: 48px;
+
+  /* Glow effects */
+  --glow-green: 0 0 12px rgba(0, 255, 136, 0.6);
+  --glow-cyan: 0 0 12px rgba(0, 212, 255, 0.6);
+}
+
+/* ===== Reset ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+body {
+  background: var(--hud-bg);
+  color: var(--hud-text);
+  font-family: var(--font-ui);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ===== Mirror Engine ===== */
+.mirrored {
+  transform: scaleX(-1);
+}
+
+/* Counter-mirror for elements that should read normally in mirror mode */
+.mirror-active .no-mirror {
+  transform: scaleX(-1);
+}
+
+/* ===== #app Layout (3-row: top / map / bottom) ===== */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+}
+
+/* ===== Safety Warning Overlay ===== */
+#safety-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.safety-box {
+  max-width: 320px;
+  width: 85%;
+  text-align: center;
+  padding: 2rem;
+  background: rgba(10, 10, 20, 0.95);
+  border-radius: 16px;
+  border: 1px solid var(--hud-green);
+  box-shadow: var(--glow-green);
+}
+
+.safety-box h2 {
+  margin-bottom: 1rem;
+  color: var(--hud-green);
+  font-size: 1.4rem;
+}
+
+.safety-box p {
+  margin-bottom: 1.5rem;
+  line-height: 1.7;
+  font-size: 0.95rem;
+  color: #bbb;
+}
+
+.safety-box button {
+  background: var(--hud-green);
+  color: #000;
+  padding: 14px 40px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: var(--touch-min);
+}
+
+/* ===== HUD Top Bar (Time + Compass, symmetric) ===== */
+#hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--hud-bg-overlay);
+  flex-shrink: 0;
+  z-index: 50;
+  min-height: var(--touch-min);
+}
+
+.hud-top-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-top-center {
+  flex: 1;
+  text-align: center;
+}
+
+.hud-top-icon {
+  font-size: 1.1rem;
+}
+
+.hud-top-value {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--hud-green);
+  text-shadow: var(--glow-green);
+  letter-spacing: 1px;
+}
+
+#compass-value {
+  color: var(--hud-cyan);
+  text-shadow: var(--glow-cyan);
+}
+
+#altitude-value {
+  font-size: 0.9rem;
+  color: var(--hud-text-dim);
+}
+
+/* ===== Map Container (fills available space) ===== */
+#map-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--hud-bg);
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* ===== Map Search Overlay ===== */
+#map-search {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.85);
+}
+
+#search-form {
+  display: flex;
+  gap: 6px;
+}
+
+#search-input {
+  flex: 1;
+  background: rgba(20, 20, 40, 0.9);
+  border: 1px solid #333;
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 1rem;
+  outline: none;
+  min-height: var(--touch-min);
+}
+
+#search-input:focus {
+  border-color: var(--hud-cyan);
+}
+
+#search-form button {
+  background: var(--hud-cyan);
+  color: #000;
+  border: none;
+  padding: 0 16px;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+}
+
+#search-close {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+#search-results {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+
+.search-result-item {
+  padding: 14px 16px;
+  background: rgba(20, 20, 40, 0.8);
+  border-bottom: 1px solid #222;
+  cursor: pointer;
+  color: #ddd;
+  font-size: 0.95rem;
+  min-height: var(--touch-min);
+  display: flex;
+  align-items: center;
+}
+
+.search-result-item:active {
+  background: rgba(0, 212, 255, 0.15);
+}
+
+.search-result-name {
+  font-weight: 600;
+  color: #fff;
+}
+
+.search-result-addr {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* ===== Speed Overlay (large, centered on map) ===== */
+#speed-overlay {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  text-align: center;
+  pointer-events: none;
+}
+
+.speed-number {
+  font-family: var(--font-mono);
+  font-size: 4rem;
+  font-weight: 900;
+  color: var(--hud-green);
+  text-shadow: var(--glow-green);
+  line-height: 1;
+}
+
+.speed-unit {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--hud-text-dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* ===== HUD Bottom Bar ===== */
+#hud-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--hud-bg-overlay);
+  flex-shrink: 0;
+  z-index: 50;
+  gap: 8px;
+  min-height: var(--touch-min);
+}
+
+.hud-bottom-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--hud-text-dim);
+  flex-shrink: 0;
+}
+
+.hud-sep {
+  color: #333;
+}
+
+.hud-bottom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.hud-btn {
+  background: transparent;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: var(--hud-green);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.hud-btn:active {
+  background: rgba(0, 255, 136, 0.15);
+}
+
+#brightness-slider {
+  flex: 1;
+  min-width: 60px;
+  max-width: 120px;
+  accent-color: var(--hud-cyan);
+  height: var(--touch-min);
+}
+
+/* ===== Mirror Active States ===== */
+.mirror-active #btn-mirror {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: var(--hud-green);
+}
+
+/* ===== HUD Mode (fullscreen driving mode) ===== */
+.hud-mode #hud-bottom .hud-bottom-controls {
+  /* In HUD mode, show only essential controls */
+}
+
+.hud-mode #hud-bottom-info {
+  display: flex !important;
+}
+
+.hud-mode #speed-overlay {
+  display: block !important;
+}
+
+.hud-mode .hud-top-value {
+  font-size: 1.5rem;
+}
+
+.hud-mode .speed-number {
+  font-size: 5rem;
+}
+
+.hud-mode #map {
+  filter: brightness(1.2) contrast(1.1) saturate(0.8);
+}
+
+/* ===== Leaflet Overrides for HUD dark theme ===== */
+.leaflet-control-zoom {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.leaflet-control-zoom a {
+  background: rgba(0, 0, 0, 0.7) !important;
+  color: var(--hud-green) !important;
+  border: 1px solid rgba(0, 255, 136, 0.3) !important;
+  width: var(--touch-min) !important;
+  height: var(--touch-min) !important;
+  line-height: var(--touch-min) !important;
+  font-size: 1.2rem !important;
+}
+
+.leaflet-control-attribution {
+  display: none !important;
+}
+
+/* ===== Turn-by-Turn Navigation Banner ===== */
+#nav-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.8) 100%);
+  border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+  min-height: 72px;
+}
+
+.nav-turn-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.6));
+}
+
+.nav-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-instruction {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-road {
+  font-size: 0.8rem;
+  color: var(--hud-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.nav-eta {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.nav-distance {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--hud-cyan);
+  text-shadow: var(--glow-cyan);
+}
+
+.nav-eta-time {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--hud-text-dim);
+  margin-top: 2px;
+}
+
+.nav-stop-btn {
+  flex-shrink: 0;
+  background: rgba(255, 68, 68, 0.2);
+  border: 1px solid rgba(255, 68, 68, 0.5);
+  color: var(--hud-red);
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border-radius: 8px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-stop-btn:active {
+  background: rgba(255, 68, 68, 0.4);
+}
+
+/* ===== Navigation Approach Warning (large, centered) ===== */
+#nav-approach {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  text-align: center;
+  pointer-events: none;
+  padding: 16px 32px;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 12px;
+  border: 2px solid var(--hud-amber);
+  box-shadow: 0 0 20px rgba(255, 170, 0, 0.4);
+  display: none;
+}
+
+#nav-approach.active {
+  display: block;
+}
+
+.nav-approach-distance {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  font-weight: 900;
+  color: var(--hud-amber);
+  text-shadow: 0 0 16px rgba(255, 170, 0, 0.6);
+  line-height: 1;
+}
+
+.nav-approach-instruction {
+  font-size: 1rem;
+  color: #fff;
+  margin-top: 6px;
+}
+
+/* ===== HUD Mode Navigation Enhancements ===== */
+.hud-mode #nav-banner {
+  padding: 8px 16px;
+  min-height: 64px;
+}
+
+.hud-mode .nav-turn-icon {
+  font-size: 2.4rem;
+}
+
+.hud-mode .nav-instruction {
+  font-size: 1.3rem;
+}
+
+.hud-mode .nav-distance {
+  font-size: 1.6rem;
+}
+
+.hud-mode #nav-approach .nav-approach-distance {
+  font-size: 4rem;
+}
+
+/* Navigation active state — adjust speed overlay position */
+.nav-active #speed-overlay {
+  bottom: 16px;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+/* ===== Orientation: allow both portrait and landscape ===== */
+@media (orientation: landscape) {
+  #hud-top {
+    padding: 4px 16px;
+    min-height: var(--touch-min);
+  }
+  .hud-top-value {
+    font-size: 1.1rem;
+  }
+  #hud-bottom {
+    padding: 4px 12px;
+    min-height: var(--touch-min);
+  }
+  .hud-btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+  .speed-number {
+    font-size: 3.5rem;
+  }
+}
+
+  </style>
+</head>
+<body>
+  <!-- Safety Warning Overlay -->
+  <div id="safety-overlay" style="display:none">
+    <div class="safety-box">
+      <h2>⚠️ 주의</h2>
+      <p>운전 중 스마트폰 조작은 법적 제한이 있을 수 있습니다.<br>정차 시 또는 조수석에서만 사용하세요.</p>
+      <button id="safety-ok">확인</button>
+    </div>
+  </div>
+
+  <div id="app">
+    <!-- ===== HUD Top Bar: Time + Compass (symmetric for mirror) ===== -->
+    <div id="hud-top">
+      <div class="hud-top-item" id="clock-widget">
+        <span class="hud-top-icon">🕐</span>
+        <span class="hud-top-value" id="clock-value">--:--</span>
+      </div>
+      <div class="hud-top-center">
+        <span class="hud-top-value" id="altitude-value" style="display:none">--m</span>
+      </div>
+      <div class="hud-top-item" id="compass-widget">
+        <span class="hud-top-value" id="compass-value">--°</span>
+        <span class="hud-top-icon">🧭</span>
+      </div>
+    </div>
+
+    <!-- ===== Map Area (full center) ===== -->
+    <div id="map-container">
+      <div id="map"></div>
+      <!-- Map search overlay -->
+      <div id="map-search" style="display:none">
+        <div id="map-search-box">
+          <form id="search-form">
+            <input type="text" id="search-input" placeholder="목적지 검색..." autocomplete="off" />
+            <button type="submit">🔍</button>
+            <button type="button" id="search-close">✕</button>
+          </form>
+          <div id="search-results"></div>
+        </div>
+      </div>
+      <!-- Speed overlay (large, centered on map) -->
+      <div id="speed-overlay" style="display:none">
+        <div class="speed-number" id="speed-value">--</div>
+        <div class="speed-unit">km/h</div>
+      </div>
+
+      <!-- Turn-by-Turn Navigation Banner -->
+      <div id="nav-banner" style="display:none">
+        <div id="nav-icon" class="nav-turn-icon">⬆️</div>
+        <div class="nav-info">
+          <div class="nav-instruction" id="nav-instruction">--</div>
+          <div class="nav-road" id="nav-road">--</div>
+        </div>
+        <div class="nav-eta">
+          <div class="nav-distance" id="nav-distance">--</div>
+          <div class="nav-eta-time" id="nav-eta-time">--</div>
+        </div>
+        <button id="nav-stop" class="nav-stop-btn">✕</button>
+      </div>
+
+      <!-- Navigation approach warning -->
+      <div id="nav-approach">
+        <div class="nav-approach-distance" id="nav-approach-distance">--</div>
+        <div class="nav-approach-instruction" id="nav-approach-instruction">--</div>
+      </div>
+    </div>
+
+    <!-- ===== HUD Bottom Bar: Trip info + Controls ===== -->
+    <div id="hud-bottom">
+      <div class="hud-bottom-info" id="trip-info" style="display:none">
+        <span id="trip-distance">0.0 km</span>
+        <span class="hud-sep">|</span>
+        <span id="trip-time">00:00</span>
+      </div>
+      <div class="hud-bottom-controls">
+        <button id="btn-mirror" class="hud-btn" title="좌우 반전">🔄 반전</button>
+        <button id="btn-hud-mode" class="hud-btn" title="HUD 모드">🖥️ HUD</button>
+        <button id="btn-search" class="hud-btn" title="목적지 검색">🔍 검색</button>
+        <input type="range" id="brightness-slider" min="0.5" max="2.0" step="0.1" value="1.0" title="밝기" />
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+/**
+ * MirrorEngine — 좌우 반전 엔진
+ * HUD Mirror PWA의 핵심: 화면 좌우 반전 기능
+ */
+
+class MirrorEngine {
+  constructor(container) {
+    if (!container || !(container instanceof HTMLElement)) {
+      throw new Error('MirrorEngine requires a valid DOM container element');
+    }
+    this.container = container;
+    this._enabled = false;
+  }
+
+  /** 미러 토글 — 활성화 여부 반환 */
+  toggle() {
+    this._enabled = !this._enabled;
+
+    if (this._enabled) {
+      this.container.classList.add('mirrored');
+    } else {
+      this.container.classList.remove('mirrored');
+    }
+
+    const event = new CustomEvent('mirrortoggle', {
+      detail: { enabled: this._enabled }
+    });
+    this.container.dispatchEvent(event);
+
+    return this._enabled;
+  }
+
+  isEnabled() {
+    return this._enabled;
+  }
+
+  /**
+   * 터치 이벤트 좌표를 반전시킨 객체 반환
+   * 반전 모드일 때 iframe 내부의 터치 위치를 보정하는 용도
+   */
+  remapTouchEvent(event) {
+    if (!this._enabled || !event) {
+      return event;
+    }
+
+    const touches = event.touches ? Array.from(event.touches) : [];
+    const changedTouches = event.changedTouches ? Array.from(event.changedTouches) : [];
+    const screenWidth = window.innerWidth;
+
+    const remapPoint = (point) => {
+      if (!point || typeof point.clientX !== 'number') return point;
+      const remapped = Object.assign({}, point, {
+        clientX: screenWidth - point.clientX
+      });
+      if (typeof point.pageX === 'number') {
+        remapped.pageX = window.pageXOffset + (screenWidth - (point.pageX - window.pageXOffset));
+      }
+      if (typeof point.screenX === 'number') {
+        remapped.screenX = screen.width - point.screenX;
+      }
+      return remapped;
+    };
+
+    const remapped = {
+      type: event.type,
+      target: event.target,
+      currentTarget: event.currentTarget,
+      bubbles: event.bubbles,
+      cancelable: event.cancelable,
+      timestamp: event.timestamp,
+      touches: touches.map(remapPoint),
+      targetTouches: event.targetTouches ? Array.from(event.targetTouches).map(remapPoint) : [],
+      changedTouches: changedTouches.map(remapPoint),
+      isTrusted: event.isTrusted,
+      _originalEvent: event,
+    };
+
+    if (event.pointerId !== undefined) {
+      remapped.pointerId = event.pointerId;
+      remapped.clientX = screenWidth - event.clientX;
+      remapped.screenX = screen.width - event.screenX;
+    }
+
+    return remapped;
+  }
+
+  /** 리소스 정리 */
+  destroy() {
+    if (this._enabled) {
+      this.container.classList.remove('mirrored');
+      this._enabled = false;
+    }
+    this.container = null;
+  }
+}
+
+window.MirrorEngine = MirrorEngine;
+
+  </script>
+  <script>
+/**
+ * HUD Widgets — 헤드업 디스플레이 위젯 모음
+ * 시계, 나침반, 속도, 고도, 주행거리 위젯 관리
+ */
+
+// ===== 시계 위젯: HH:MM 표시 (운전 중 가독성 위해 초 제외) =====
+class ClockWidget {
+  constructor(el) {
+    this.el = el;
+    this._interval = null;
+  }
+
+  start() {
+    this._update();
+    this._interval = setInterval(() => this._update(), 10000); // 10초마다 갱신
+  }
+
+  stop() {
+    if (this._interval) {
+      clearInterval(this._interval);
+      this._interval = null;
+    }
+  }
+
+  _update() {
+    if (!this.el) return;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    this.el.textContent = `${hh}:${mm}`;
+  }
+}
+
+// ===== 나침반 위젯: 방위각 표시 (iOS 13+ 권한 요청 포함) =====
+class CompassWidget {
+  constructor(el) {
+    this.el = el;
+    this._heading = null;
+    this._onOrientation = null;
+    this._started = false;
+  }
+
+  async start() {
+    if (this._started) return;
+    this._started = true;
+
+    // iOS 13+에서는 명시적 권한 요청 필요
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const perm = await DeviceOrientationEvent.requestPermission();
+        if (perm !== 'granted') {
+          console.warn('나침반 권한 거부됨');
+          return;
+        }
+      } catch (e) {
+        console.warn('DeviceOrientationEvent 권한 요청 실패:', e);
+        return;
+      }
+    }
+
+    this._onOrientation = (e) => {
+      // webkitCompassHeading (iOS) 또는 alpha (Android) 사용
+      let heading = null;
+      if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+        heading = e.webkitCompassHeading;
+      } else if (e.alpha !== null && e.alpha !== undefined) {
+        // Android alpha는 0~360 (북쪽 기준 시계방향)
+        heading = e.alpha;
+      }
+
+      // 유효한 방위각만 업데이트 (jitter 방지)
+      if (heading !== null && !isNaN(heading)) {
+        this._heading = Math.round(heading);
+        this._render();
+      }
+    };
+
+    window.addEventListener('deviceorientation', this._onOrientation, true);
+  }
+
+  stop() {
+    if (this._onOrientation) {
+      window.removeEventListener('deviceorientation', this._onOrientation, true);
+      this._onOrientation = null;
+    }
+    this._started = false;
+  }
+
+  getHeading() {
+    return this._heading;
+  }
+
+  _render() {
+    if (!this.el) return;
+    this.el.textContent = `${this._heading}°`;
+  }
+}
+
+// ===== 속도 위젯: km/h 표시 (정지 시 -- 표시로 jitter 방지) =====
+class SpeedWidget {
+  constructor(el) {
+    this.el = el;
+    this._speed = 0;
+    this._threshold = 3; // km/h 미만은 -- 표시
+  }
+
+  update(coords) {
+    if (!this.el) return;
+    if (coords && coords.speed !== null && coords.speed !== undefined) {
+      this._speed = coords.speed * 3.6; // m/s → km/h
+    }
+    this._render();
+  }
+
+  /** 외부에서 속도값 직접 설정 (GPS speed가 없을 때 대비) */
+  setSpeed(kmh) {
+    this._speed = kmh;
+    this._render();
+  }
+
+  getSpeed() {
+    return this._speed;
+  }
+
+  _render() {
+    if (!this.el) return;
+    if (this._speed < this._threshold) {
+      this.el.textContent = '--';
+    } else {
+      this.el.textContent = Math.round(this._speed);
+    }
+  }
+}
+
+// ===== 고도 위젯: GPS 고도 표시 (m) =====
+class AltitudeWidget {
+  constructor(el) {
+    this.el = el;
+    this._altitude = null;
+  }
+
+  update(coords) {
+    if (!this.el) return;
+    if (coords && coords.altitude !== null && coords.altitude !== undefined && !isNaN(coords.altitude)) {
+      this._altitude = coords.altitude;
+      this.el.textContent = `${Math.round(this._altitude)}m`;
+      this.el.style.display = '';
+    } else {
+      this._altitude = null;
+      this.el.textContent = '--m';
+      // 고도 정보 없으면 숨김
+      this.el.style.display = 'none';
+    }
+  }
+
+  getAltitude() {
+    return this._altitude;
+  }
+}
+
+// ===== 주행 정보 위젯: 누적 거리 + 경과 시간 =====
+class TripWidget {
+  constructor(distanceEl, timeEl, infoEl) {
+    this.distanceEl = distanceEl;
+    this.timeEl = timeEl;
+    this.infoEl = infoEl; // #trip-info 컨테이너
+    this._active = false;
+    this._distance = 0; // 미터 단위
+    this._startTime = null;
+    this._timerInterval = null;
+    this._lastPos = null;
+  }
+
+  start() {
+    this._active = true;
+    this._distance = 0;
+    this._startTime = Date.now();
+    this._lastPos = null;
+    this._renderDistance();
+    this._renderTime();
+    if (this.infoEl) this.infoEl.style.display = '';
+    this._timerInterval = setInterval(() => this._renderTime(), 1000);
+  }
+
+  stop() {
+    this._active = false;
+    if (this._timerInterval) {
+      clearInterval(this._timerInterval);
+      this._timerInterval = null;
+    }
+  }
+
+  reset() {
+    this.stop();
+    this._distance = 0;
+    this._startTime = null;
+    this._lastPos = null;
+    this._renderDistance();
+    this._renderTime();
+    if (this.infoEl) this.infoEl.style.display = 'none';
+  }
+
+  isActive() {
+    return this._active;
+  }
+
+  /** GPS 위치 업데이트 시 호출 — Haversine 공식으로 거리 누적 */
+  updatePosition(coords) {
+    if (!this._active || !coords) return;
+
+    const lat = coords.latitude;
+    const lon = coords.longitude;
+    if (lat === null || lon === null) return;
+
+    if (this._lastPos) {
+      const d = this._haversine(this._lastPos.lat, this._lastPos.lon, lat, lon);
+      // GPS 오차로 인한 비정상적 점프 필터링 (한 번에 500m 이상 이동 무시)
+      if (d < 500) {
+        this._distance += d;
+      }
+    }
+
+    this._lastPos = { lat, lon };
+    this._renderDistance();
+  }
+
+  getDistance() {
+    return this._distance;
+  }
+
+  /** Haversine 공식 — 두 위경도 간 거리(미터) 계산 */
+  _haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // 지구 반지름 (미터)
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  _renderDistance() {
+    if (!this.distanceEl) return;
+    if (this._distance >= 1000) {
+      this.distanceEl.textContent = `${(this._distance / 1000).toFixed(1)} km`;
+    } else {
+      this.distanceEl.textContent = `${Math.round(this._distance)} m`;
+    }
+  }
+
+  _renderTime() {
+    if (!this.timeEl) return;
+    if (!this._startTime) {
+      this.timeEl.textContent = '00:00';
+      return;
+    }
+    const elapsed = Math.floor((Date.now() - this._startTime) / 1000);
+    const h = Math.floor(elapsed / 3600);
+    const m = Math.floor((elapsed % 3600) / 60);
+    const s = elapsed % 60;
+    if (h > 0) {
+      this.timeEl.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    } else {
+      this.timeEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+  }
+}
+
+// ===== HUD 위젯 관리자 — 모든 위젯 오케스트레이션 =====
+class HudWidgetsManager {
+  constructor() {
+    // DOM 요소 참조
+    this.clockEl = document.getElementById('clock-value');
+    this.compassEl = document.getElementById('compass-value');
+    this.speedEl = document.getElementById('speed-value');
+    this.altitudeEl = document.getElementById('altitude-value');
+    this.tripDistEl = document.getElementById('trip-distance');
+    this.tripTimeEl = document.getElementById('trip-time');
+    this.tripInfoEl = document.getElementById('trip-info');
+
+    // 위젯 인스턴스 생성
+    this.clock = new ClockWidget(this.clockEl);
+    this.compass = new CompassWidget(this.compassEl);
+    this.speed = new SpeedWidget(this.speedEl);
+    this.altitude = new AltitudeWidget(this.altitudeEl);
+    this.trip = new TripWidget(this.tripDistEl, this.tripTimeEl, this.tripInfoEl);
+
+    // GPS 위치 추적 ID
+    this._watchId = null;
+    this._running = false;
+  }
+
+  /** GPS 감시 시작 + 시계/나침반 활성화 */
+  start() {
+    if (this._running) return;
+    this._running = true;
+
+    this.clock.start();
+    this.compass.start();
+
+    // GPS 위치 감시
+    if ('geolocation' in navigator) {
+      this._watchId = navigator.geolocation.watchPosition(
+        (pos) => this._onPosition(pos),
+        (err) => console.warn('GPS 오류:', err.message),
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      );
+    }
+  }
+
+  /** 모든 위젯 정지 + GPS 해제 */
+  stop() {
+    this._running = false;
+
+    this.clock.stop();
+    this.compass.stop();
+
+    if (this._watchId !== null) {
+      navigator.geolocation.clearWatch(this._watchId);
+      this._watchId = null;
+    }
+  }
+
+  /** 주행 기록 시작/정지 토글 */
+  toggleTrip() {
+    if (this.trip.isActive()) {
+      this.trip.stop();
+    } else {
+      this.trip.start();
+      // GPS가 아직 시작되지 않았다면 함께 시작
+      if (!this._running) this.start();
+    }
+    return this.trip.isActive();
+  }
+
+  isRunning() {
+    return this._running;
+  }
+
+  /** GPS 위치 콜백 */
+  _onPosition(pos) {
+    const coords = pos.coords;
+
+    // 속도 위젯 업데이트
+    this.speed.update(coords);
+
+    // 고도 위젯 업데이트
+    this.altitude.update(coords);
+
+    // 주행 거리 업데이트
+    this.trip.updatePosition(coords);
+
+    // 외부로 위치 이벤트 전달 (맵 위젯 등에서 활용)
+    const event = new CustomEvent('gpsposition', {
+      detail: {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        accuracy: coords.accuracy,
+        altitude: coords.altitude,
+        speed: coords.speed,
+        heading: coords.heading
+      }
+    });
+    document.dispatchEvent(event);
+  }
+
+  /** 현재 속도(km/h) 반환 */
+  getSpeed() {
+    return this.speed.getSpeed();
+  }
+
+  /** 현재 나침반 방위각 반환 */
+  getHeading() {
+    return this.compass.getHeading();
+  }
+
+  /** 리소스 정리 */
+  destroy() {
+    this.stop();
+    this.trip.reset();
+  }
+}
+
+window.ClockWidget = ClockWidget;
+window.CompassWidget = CompassWidget;
+window.SpeedWidget = SpeedWidget;
+window.AltitudeWidget = AltitudeWidget;
+window.TripWidget = TripWidget;
+window.HudWidgetsManager = HudWidgetsManager;
+
+  </script>
+  <script>
+/**
+ * MapWidget — Leaflet 기반 지도 위젯
+ * GPS 위치 추적, 목적지 검색(Nominatim), 경로 탐색(OSRM)
+ * 진행방향 지도 회전, 턴바이턴 네비게이션
+ */
+
+class MapWidget {
+  constructor() {
+    this.map = null;
+    this.tileLayer = null;
+    this.userMarker = null;
+    this.accuracyCircle = null;
+    this.destMarker = null;
+    this.routeLine = null;
+    this._userPos = null;
+    this._searchVisible = false;
+    this._boundHandlers = {};
+    this._rotateTimeout = null;
+
+    // 지도 회전 관련 상태
+    this._mapRotationEnabled = true;   // 자동 회전 활성화 여부
+    this._currentHeading = null;       // 현재 나침반 heading (도)
+    this._userRotationTimeout = null;  // 사용자 드래그 후 재활성화 타이머
+
+    // 네비게이션 관련 상태
+    this._navSteps = null;             // OSRM step 배열 (null = 네비게이션 비활성)
+    this._currentStepIndex = 0;        // 현재 네비게이션 단계 인덱스
+    this._navTotal = null;             // 전체 경로 정보 { distance, duration }
+    this._navStartTime = null;         // 네비게이션 시작 시간
+    this._arrivalTimeout = null;       // 도착 후 자동 종료 타이머
+
+    // 방향 지시 매핑 테이블 (modifier → { icon, text })
+    this._maneuverMap = {
+      'straight':      { icon: '⬆️', text: '직진' },
+      'slight right':  { icon: '↗️', text: '약간 우회전' },
+      'right':         { icon: '➡️', text: '우회전' },
+      'sharp right':   { icon: '🔽', text: '급 우회전' },
+      'slight left':   { icon: '↖️', text: '약간 좌회전' },
+      'left':          { icon: '⬅️', text: '좌회전' },
+      'sharp left':    { icon: '🔼', text: '급 좌회전' },
+      'uturn':         { icon: '🔄', text: '유턴' }
+    };
+
+    // 특수 maneuver type 매핑
+    this._specialManeuverMap = {
+      'arrive':      '목적지 도착',
+      'depart':      '출발',
+      'roundabout':  '회전교차로',
+      'rotary':      '회전교차로',
+      'fork':        '분기점',
+      'merge':       '합류'
+    };
+  }
+
+  /** 지도 초기화 */
+  init() {
+    // Leaflet이 로드되었는지 확인
+    if (typeof L === 'undefined') {
+      console.error('Leaflet이 로드되지 않았습니다');
+      return;
+    }
+
+    // 기본 위치 (서울)
+    const defaultLat = 37.5665;
+    const defaultLng = 126.978;
+
+    this.map = L.map('map', {
+      center: [defaultLat, defaultLng],
+      zoom: 15,
+      zoomControl: true,
+      attributionControl: false
+    });
+
+    // 다크 타일 레이어 (CARTO 무료, API 키 불필요)
+    this.tileLayer = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      {
+        maxZoom: 19,
+        subdomains: 'abcd'
+      }
+    ).addTo(this.map);
+
+    // GPS 위치 이벤트 수신
+    this._onGpsPosition = (e) => this._updateUserPosition(e.detail);
+    document.addEventListener('gpsposition', this._onGpsPosition);
+
+    // 검색 폼 이벤트
+    this._onSearchSubmit = (e) => this._handleSearch(e);
+    this._onSearchClose = () => this.hideSearch();
+    this._onSearchResultClick = (e) => this._onResultClick(e);
+
+    const searchForm = document.getElementById('search-form');
+    const searchClose = document.getElementById('search-close');
+    const searchResults = document.getElementById('search-results');
+
+    if (searchForm) searchForm.addEventListener('submit', this._onSearchSubmit);
+    if (searchClose) searchClose.addEventListener('click', this._onSearchClose);
+    if (searchResults) searchResults.addEventListener('click', this._onSearchResultClick);
+
+    // 나침반 방향 변경 이벤트로 지도 회전
+    this._onCompassUpdate = (e) => this._rotateMapByCompass(e);
+    document.addEventListener('deviceorientation', this._onCompassUpdate, true);
+
+    // 사용자 드래그 시 자동 회전 일시 해제
+    if (this.map) {
+      this.map.on('dragstart', () => this._onUserDragStart());
+    }
+
+    // 맵 레이아웃 강제 갱신 (지연 로딩 대응)
+    setTimeout(() => {
+      if (this.map) this.map.invalidateSize();
+    }, 500);
+  }
+
+  /** 검색 패널 표시/숨김 토글 */
+  toggleSearch() {
+    if (this._searchVisible) {
+      this.hideSearch();
+    } else {
+      this.showSearch();
+    }
+  }
+
+  showSearch() {
+    const searchDiv = document.getElementById('map-search');
+    if (searchDiv) {
+      searchDiv.style.display = '';
+      const input = document.getElementById('search-input');
+      if (input) input.focus();
+    }
+    this._searchVisible = true;
+  }
+
+  hideSearch() {
+    const searchDiv = document.getElementById('map-search');
+    if (searchDiv) {
+      searchDiv.style.display = 'none';
+    }
+    this._searchVisible = false;
+  }
+
+  /** 지도 크기 강제 갱신 (레이아웃 변경 후 호출) */
+  invalidateSize() {
+    if (this.map) {
+      setTimeout(() => this.map.invalidateSize(), 100);
+    }
+  }
+
+  /** 사용자 GPS 위치 마커 업데이트 */
+  _updateUserPosition(detail) {
+    if (!this.map || !detail) return;
+
+    const { latitude, longitude, accuracy, heading } = detail;
+    if (latitude == null || longitude == null) return;
+
+    this._userPos = [latitude, longitude];
+
+    // GPS heading이 있으면 나침반 대신 사용 (이동 중)
+    if (heading !== null && heading !== undefined && !isNaN(heading)) {
+      this._currentHeading = heading;
+    }
+
+    // 기존 마커 제거 후 재배치
+    if (this.userMarker) {
+      this.userMarker.setLatLng(this._userPos);
+    } else {
+      // 사용자 위치 마커 (커스텀 아이콘)
+      const userIcon = L.divIcon({
+        className: 'user-marker-icon',
+        html: '<div style="width:16px;height:16px;background:#00ff88;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(0,255,136,0.8)"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+
+      this.userMarker = L.marker(this._userPos, { icon: userIcon }).addTo(this.map);
+      // 첫 위치 수신 시 지도 중심 이동
+      this.map.setView(this._userPos, Math.max(this.map.getZoom(), 15));
+    }
+
+    // 정확도 원 표시
+    if (accuracy != null) {
+      if (this.accuracyCircle) {
+        this.accuracyCircle.setLatLng(this._userPos).setRadius(accuracy);
+      } else {
+        this.accuracyCircle = L.circle(this._userPos, {
+          radius: accuracy,
+          color: '#00ff88',
+          fillColor: '#00ff88',
+          fillOpacity: 0.08,
+          weight: 1,
+          opacity: 0.3
+        }).addTo(this.map);
+      }
+    }
+
+    // 네비게이션 활성 상태에서 step 진행 체크
+    if (this._navSteps && this._navSteps.length > 0) {
+      this._advanceNavStep();
+    }
+  }
+
+  // ==========================================
+  // Task 1: 나침반 기반 지도 회전
+  // ==========================================
+
+  /** 나침반 방향으로 지도 회전 */
+  _rotateMapByCompass(e) {
+    if (!this._mapRotationEnabled) return;
+
+    let heading = null;
+    if (e && e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+      heading = e.webkitCompassHeading; // iOS
+    } else if (e && e.alpha !== null && e.alpha !== undefined) {
+      heading = e.alpha; // Android
+    }
+
+    if (heading === null || isNaN(heading)) return;
+
+    this._currentHeading = heading;
+    this._applyMapRotation(heading);
+  }
+
+  /** 실제 지도 회전 적용 (CSS transform 사용) */
+  _applyMapRotation(heading) {
+    const mapEl = document.getElementById('map');
+    if (!mapEl) return;
+
+    // 나침반 heading을 지도 회전각으로 변환 (heading 방향이 위로 오도록)
+    const rotation = -heading;
+    mapEl.style.transition = 'transform 300ms ease';
+    mapEl.style.transform = `rotate(${rotation}deg)`;
+    mapEl.style.transformOrigin = 'center center';
+  }
+
+  /** 사용자가 지도를 드래그하면 자동 회전 일시 해제 */
+  _onUserDragStart() {
+    if (!this._mapRotationEnabled) return;
+
+    this._mapRotationEnabled = false;
+    console.log('사용자 드래그 — 지도 자동 회전 일시 해제');
+
+    // 10초 후 자동 회전 재활성화
+    if (this._userRotationTimeout) {
+      clearTimeout(this._userRotationTimeout);
+    }
+    this._userRotationTimeout = setTimeout(() => {
+      this._mapRotationEnabled = true;
+      console.log('지도 자동 회전 재활성화');
+      // 현재 heading으로 즉시 회전
+      if (this._currentHeading !== null) {
+        this._applyMapRotation(this._currentHeading);
+      }
+    }, 10000);
+  }
+
+  /** 지도 회전 수동 재활성화 */
+  enableMapRotation() {
+    this._mapRotationEnabled = true;
+    if (this._userRotationTimeout) {
+      clearTimeout(this._userRotationTimeout);
+      this._userRotationTimeout = null;
+    }
+    if (this._currentHeading !== null) {
+      this._applyMapRotation(this._currentHeading);
+    }
+  }
+
+  // ==========================================
+  // Task 2: 턴바이턴 네비게이션 (OSRM steps)
+  // ==========================================
+
+  /** 목적지 검색 (Nominatim API) */
+  async _handleSearch(e) {
+    e.preventDefault();
+    const input = document.getElementById('search-input');
+    const resultsDiv = document.getElementById('search-results');
+    if (!input || !resultsDiv) return;
+
+    const query = input.value.trim();
+    if (!query) return;
+
+    resultsDiv.innerHTML = '<div class="search-result-item" style="color:#888">검색 중...</div>';
+
+    try {
+      const resp = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&accept-language=ko`,
+        { headers: { 'User-Agent': 'HudMirrorPWA/2.0' } }
+      );
+      const data = await resp.json();
+
+      if (!data || data.length === 0) {
+        resultsDiv.innerHTML = '<div class="search-result-item" style="color:#888">검색 결과가 없습니다</div>';
+        return;
+      }
+
+      resultsDiv.innerHTML = data.map((item, idx) => `
+        <div class="search-result-item" data-lat="${item.lat}" data-lon="${item.lon}" data-idx="${idx}">
+          <div class="search-result-name">${this._escapeHtml(item.display_name.split(',')[0])}</div>
+          <div class="search-result-addr">${this._escapeHtml(item.display_name)}</div>
+        </div>
+      `).join('');
+    } catch (err) {
+      console.error('검색 오류:', err);
+      resultsDiv.innerHTML = '<div class="search-result-item" style="color:#ff4444">검색 실패</div>';
+    }
+  }
+
+  /** 검색 결과 항목 클릭 처리 */
+  _onResultClick(e) {
+    const item = e.target.closest('.search-result-item');
+    if (!item) return;
+
+    const lat = parseFloat(item.dataset.lat);
+    const lon = parseFloat(item.dataset.lon);
+    if (isNaN(lat) || isNaN(lon)) return;
+
+    // 지도 이동
+    if (this.map) {
+      this.map.setView([lat, lon], 16);
+    }
+
+    // 기존 목적지 마커/경로 제거
+    this._clearDestination();
+
+    // 기존 네비게이션 중지
+    this._stopNavigation();
+
+    // 목적지 마커 추가
+    const destIcon = L.divIcon({
+      className: 'dest-marker-icon',
+      html: '<div style="width:12px;height:12px;background:#ff4444;border-radius:50%;border:2px solid #fff;box-shadow:0 0 8px rgba(255,68,68,0.8)"></div>',
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+
+    this.destMarker = L.marker([lat, lon], { icon: destIcon }).addTo(this.map);
+
+    // 현재 위치에서 경로 탐색
+    if (this._userPos) {
+      this._fetchRoute(this._userPos[1], this._userPos[0], lon, lat);
+    }
+
+    // 검색 패널 닫기
+    this.hideSearch();
+  }
+
+  /** OSRM 경로 탐색 (steps=true 포함) */
+  async _fetchRoute(fromLon, fromLat, toLon, toLat) {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson&steps=true`;
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'HudMirrorPWA/2.0' }
+      });
+      const data = await resp.json();
+
+      if (!data.routes || data.routes.length === 0) {
+        console.warn('경로를 찾을 수 없습니다');
+        return;
+      }
+
+      const route = data.routes[0];
+      const coords = route.geometry.coordinates.map(c => [c[1], c[0]]); // [lon,lat] → [lat,lon]
+
+      this.routeLine = L.polyline(coords, {
+        color: '#00d4ff',
+        weight: 4,
+        opacity: 0.8,
+        dashArray: '8, 6'
+      }).addTo(this.map);
+
+      // 경로에 맞게 지도 영역 조정
+      this.map.fitBounds(this.routeLine.getBounds(), { padding: [50, 50] });
+
+      // 네비게이션 step 정보 추출
+      if (route.legs && route.legs.length > 0) {
+        // 모든 leg의 steps를 하나로 병합
+        const allSteps = [];
+        for (const leg of route.legs) {
+          if (leg.steps && leg.steps.length > 0) {
+            allSteps.push(...leg.steps);
+          }
+        }
+
+        if (allSteps.length > 0) {
+          this._navSteps = allSteps;
+          this._currentStepIndex = 0;
+          this._navTotal = {
+            distance: route.distance, // 미터
+            duration: route.duration  // 초
+          };
+          this._navStartTime = Date.now();
+
+          // 네비게이션 시작
+          this._startNavigation();
+        } else {
+          console.warn('경로 step이 없습니다');
+        }
+      }
+    } catch (err) {
+      console.error('경로 탐색 오류:', err);
+    }
+  }
+
+  /** 네비게이션 시작 — UI 표시 및 초기 상태 설정 */
+  _startNavigation() {
+    if (!this._navSteps || this._navSteps.length === 0) return;
+
+    // 네비게이션 배너 표시
+    const navBanner = document.getElementById('nav-banner');
+    if (navBanner) navBanner.style.display = '';
+
+    // nav-active 클래스 추가
+    const app = document.getElementById('app');
+    if (app) app.classList.add('nav-active');
+
+    // 지도 회전 활성화
+    this.enableMapRotation();
+
+    // 첫 step 표시 (depart step 건너뛰고 첫 실제 방향 지시로)
+    this._currentStepIndex = 0;
+    this._updateNavDisplay();
+
+    console.log(`네비게이션 시작: ${this._navSteps.length}단계, 총 거리 ${this._formatDistance(this._navTotal.distance)}`);
+  }
+
+  /** 네비게이션 표시 업데이트 */
+  _updateNavDisplay() {
+    if (!this._navSteps || this._currentStepIndex >= this._navSteps.length) return;
+
+    const step = this._navSteps[this._currentStepIndex];
+    const maneuver = step.maneuver;
+
+    // 다음 step이 있으면 방향 지시는 다음 step 기준으로 표시
+    // (현재 step이 "depart"이거나 "new name"인 경우)
+    let displayStep = step;
+    let displayIndex = this._currentStepIndex;
+
+    if ((maneuver.type === 'depart' || maneuver.type === 'new name') &&
+        this._currentStepIndex + 1 < this._navSteps.length) {
+      displayStep = this._navSteps[this._currentStepIndex + 1];
+      displayIndex = this._currentStepIndex + 1;
+    }
+
+    const displayManeuver = displayStep.maneuver;
+
+    // 아이콘과 지시문 결정
+    let icon = '⬆️';
+    let instruction = '직진';
+
+    // 1. 특수 maneuver type 처리
+    if (this._specialManeuverMap[displayManeuver.type]) {
+      instruction = this._specialManeuverMap[displayManeuver.type];
+      // 특수 type에도 modifier 기반 아이콘 적용 시도
+      if (this._maneuverMap[displayManeuver.modifier]) {
+        icon = this._maneuverMap[displayManeuver.modifier].icon;
+      } else {
+        // type에 맞는 기본 아이콘
+        const typeIcons = {
+          'arrive': '🏁',
+          'depart': '🚗',
+          'roundabout': '🔄',
+          'rotary': '🔄',
+          'fork': '⑂',
+          'merge': '⤴️'
+        };
+        icon = typeIcons[displayManeuver.type] || '⬆️';
+      }
+    }
+    // 2. 일반 modifier 매핑
+    else if (this._maneuverMap[displayManeuver.modifier]) {
+      const mapped = this._maneuverMap[displayManeuver.modifier];
+      icon = mapped.icon;
+      instruction = mapped.text;
+    }
+
+    // 목적지 도착 step인지 확인
+    const isArrival = displayManeuver.type === 'arrive';
+
+    // 도로명
+    const roadName = displayStep.name || '';
+
+    // 다음 방향 전환까지 남은 거리 계산
+    let distToNext = 0;
+    if (isArrival) {
+      // 목적지까지 남은 거리 = 현재 step 거리
+      distToNext = step.distance;
+    } else {
+      // 현재 step의 거리 (이 step의 끝에서 방향 전환)
+      distToNext = step.distance;
+    }
+
+    // 남은 전체 거리 및 ETA 계산
+    let remainingDist = 0;
+    let remainingDuration = 0;
+
+    if (this._navTotal) {
+      // 지나온 step들의 거리를 합산
+      let coveredDist = 0;
+      for (let i = 0; i < this._currentStepIndex; i++) {
+        coveredDist += this._navSteps[i].distance;
+      }
+
+      remainingDist = Math.max(0, this._navTotal.distance - coveredDist);
+
+      // OSRM duration 기반 ETA (경과 시간만큼 차감)
+      if (this._navStartTime) {
+        const elapsed = (Date.now() - this._navStartTime) / 1000;
+        remainingDuration = Math.max(0, this._navTotal.duration - elapsed);
+      } else {
+        remainingDuration = this._navTotal.duration;
+      }
+
+      // 속도 정보가 있으면 더 정확하게 보정
+      if (this._userPos && remainingDist > 0) {
+        // 남은 거리 기반 재추정 (평균 속도 가정)
+        // GPS speed가 있으면 그것을 사용, 없으면 OSRM duration 사용
+      }
+    }
+
+    // DOM 업데이트
+    const navIconEl = document.getElementById('nav-icon');
+    const navInstructionEl = document.getElementById('nav-instruction');
+    const navRoadEl = document.getElementById('nav-road');
+    const navDistanceEl = document.getElementById('nav-distance');
+    const navEtaTimeEl = document.getElementById('nav-eta-time');
+
+    if (navIconEl) navIconEl.textContent = icon;
+    if (navInstructionEl) navInstructionEl.textContent = instruction;
+    if (navRoadEl) navRoadEl.textContent = roadName || '도로 정보 없음';
+    if (navDistanceEl) navDistanceEl.textContent = this._formatDistance(distToNext);
+    if (navEtaTimeEl) navEtaTimeEl.textContent = this._formatDuration(remainingDuration);
+
+    // 접근 경고 업데이트
+    this._updateApproachWarning(distToNext, instruction, icon);
+  }
+
+  /** 접근 경고 표시/숨김 (200m 이내) */
+  _updateApproachWarning(distToNext, instruction, icon) {
+    const approachEl = document.getElementById('nav-approach');
+    const approachDistEl = document.getElementById('nav-approach-distance');
+    const approachInstrEl = document.getElementById('nav-approach-instruction');
+
+    if (!approachEl) return;
+
+    if (distToNext < 200 && distToNext > 0 && instruction !== '목적지 도착') {
+      if (approachDistEl) approachDistEl.textContent = this._formatDistance(distToNext);
+      if (approachInstrEl) approachInstrEl.textContent = instruction;
+      approachEl.classList.add('active');
+    } else {
+      approachEl.classList.remove('active');
+    }
+  }
+
+  /** 네비게이션 step 전진 — GPS 위치 기반 */
+  _advanceNavStep() {
+    if (!this._navSteps || !this._userPos) return;
+
+    const currentStep = this._navSteps[this._currentStepIndex];
+    if (!currentStep || !currentStep.geometry || !currentStep.geometry.coordinates) return;
+
+    // 현재 step의 마지막 좌표 (목표점)
+    const coords = currentStep.geometry.coordinates;
+    const lastCoord = coords[coords.length - 1];
+    const targetLat = lastCoord[1];
+    const targetLon = lastCoord[0];
+
+    // Haversine 거리 계산
+    const dist = this._haversine(
+      this._userPos[0], this._userPos[1],
+      targetLat, targetLon
+    );
+
+    // 30m 이내에 도달하면 다음 step으로 전진
+    if (dist < 30) {
+      // 마지막 step (arrive)인지 확인
+      if (this._currentStepIndex >= this._navSteps.length - 1) {
+        this._onArrival();
+        return;
+      }
+
+      this._currentStepIndex++;
+      console.log(`네비게이션 step 전진: ${this._currentStepIndex}/${this._navSteps.length}`);
+
+      // 새 step 표시 업데이트
+      this._updateNavDisplay();
+    }
+  }
+
+  /** 목적지 도착 처리 */
+  _onArrival() {
+    console.log('목적지 도착!');
+
+    // 도착 표시 업데이트
+    const navIconEl = document.getElementById('nav-icon');
+    const navInstructionEl = document.getElementById('nav-instruction');
+    const navRoadEl = document.getElementById('nav-road');
+    const navDistanceEl = document.getElementById('nav-distance');
+    const navEtaTimeEl = document.getElementById('nav-eta-time');
+
+    if (navIconEl) navIconEl.textContent = '🏁';
+    if (navInstructionEl) navInstructionEl.textContent = '목적지 도착!';
+    if (navRoadEl) navRoadEl.textContent = '';
+    if (navDistanceEl) navDistanceEl.textContent = '';
+    if (navEtaTimeEl) navEtaTimeEl.textContent = '';
+
+    // 접근 경고 숨김
+    const approachEl = document.getElementById('nav-approach');
+    if (approachEl) approachEl.classList.remove('active');
+
+    // 5초 후 네비게이션 자동 종료
+    if (this._arrivalTimeout) clearTimeout(this._arrivalTimeout);
+    this._arrivalTimeout = setTimeout(() => {
+      this._stopNavigation();
+      this._arrivalTimeout = null;
+    }, 5000);
+  }
+
+  /** 네비게이션 중지 */
+  _stopNavigation() {
+    // 도착 자동 종료 타이머 정리
+    if (this._arrivalTimeout) {
+      clearTimeout(this._arrivalTimeout);
+      this._arrivalTimeout = null;
+    }
+
+    // 네비게이션 배너 숨김
+    const navBanner = document.getElementById('nav-banner');
+    if (navBanner) navBanner.style.display = 'none';
+
+    // 접근 경고 숨김
+    const approachEl = document.getElementById('nav-approach');
+    if (approachEl) approachEl.classList.remove('active');
+
+    // nav-active 클래스 제거
+    const app = document.getElementById('app');
+    if (app) app.classList.remove('nav-active');
+
+    // 네비게이션 상태 초기화
+    this._navSteps = null;
+    this._currentStepIndex = 0;
+    this._navTotal = null;
+    this._navStartTime = null;
+
+    // 경로선과 목적지 마커는 유지 (사용자가 확인 가능)
+    console.log('네비게이션 중지');
+  }
+
+  /** 거리 포맷팅 — "XXXm" (< 1km) 또는 "X.Xkm" (>= 1km) */
+  _formatDistance(meters) {
+    if (meters == null || isNaN(meters)) return '--';
+    if (meters >= 1000) {
+      return `${(meters / 1000).toFixed(1)}km`;
+    }
+    return `${Math.round(meters)}m`;
+  }
+
+  /** 시간 포맷팅 — "XX분" 또는 "X시간 XX분" */
+  _formatDuration(seconds) {
+    if (seconds == null || isNaN(seconds) || seconds <= 0) return '--';
+    const totalMinutes = Math.ceil(seconds / 60);
+    if (totalMinutes >= 60) {
+      const h = Math.floor(totalMinutes / 60);
+      const m = totalMinutes % 60;
+      return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+    }
+    return `${totalMinutes}분`;
+  }
+
+  /** Haversine 공식 — 두 위경도 간 거리(미터) 계산 */
+  _haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // 지구 반지름 (미터)
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  /** 목적지 마커 및 경로 제거 */
+  _clearDestination() {
+    if (this.destMarker) {
+      this.map.removeLayer(this.destMarker);
+      this.destMarker = null;
+    }
+    if (this.routeLine) {
+      this.map.removeLayer(this.routeLine);
+      this.routeLine = null;
+    }
+  }
+
+  /** HTML 이스케이프 (XSS 방지) */
+  _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  /** 사용자 위치 반환 */
+  getUserPosition() {
+    return this._userPos;
+  }
+
+  /** 네비게이션 활성 상태 반환 */
+  isNavigating() {
+    return this._navSteps !== null && this._navSteps.length > 0;
+  }
+
+  /** 이벤트 리스너 정리 */
+  destroy() {
+    // GPS 이벤트 해제
+    if (this._onGpsPosition) {
+      document.removeEventListener('gpsposition', this._onGpsPosition);
+    }
+
+    // 검색 이벤트 해제
+    const searchForm = document.getElementById('search-form');
+    const searchClose = document.getElementById('search-close');
+    const searchResults = document.getElementById('search-results');
+
+    if (searchForm) searchForm.removeEventListener('submit', this._onSearchSubmit);
+    if (searchClose) searchClose.removeEventListener('click', this._onSearchClose);
+    if (searchResults) searchResults.removeEventListener('click', this._onSearchResultClick);
+
+    // 나침반 이벤트 해제
+    if (this._onCompassUpdate) {
+      document.removeEventListener('deviceorientation', this._onCompassUpdate, true);
+    }
+
+    // 회전 타이머 정리
+    if (this._userRotationTimeout) {
+      clearTimeout(this._userRotationTimeout);
+      this._userRotationTimeout = null;
+    }
+
+    // 지도 제거
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
+  }
+}
+
+window.MapWidget = MapWidget;
+
+  </script>
+  <script>
+/**
+ * HUD Mirror — 메인 애플리케이션 컨트롤러
+ * MirrorEngine, HudWidgetsManager, MapWidget 오케스트레이션
+ */
+
+class HudApp {
+  constructor() {
+    this.mirror = null;
+    this.widgets = null;
+    this.mapWidget = null;
+    this.isHudMode = false;
+    this.brightness = 1.0;
+    this._autoHudSpeedThreshold = 20; // km/h 이상에서 자동 HUD 모드 진입
+    this._autoHudCooldown = false;
+  }
+
+  init() {
+    // 미러 엔진 초기화 (#app 컨테이너에 적용)
+    this.mirror = new MirrorEngine(document.getElementById('app'));
+
+    // 위젯 매니저 초기화
+    this.widgets = new HudWidgetsManager();
+
+    // 지도 위젯 초기화
+    this.mapWidget = new MapWidget();
+    this.mapWidget.init();
+
+    // 이벤트 연결
+    this.setupEvents();
+
+    // 설정 복원
+    this.loadSettings();
+
+    // 첫 방문 안전 경고
+    this.checkFirstVisit();
+
+    // GPS 속도 기반 자동 HUD 모드 감시
+    this._watchAutoHud();
+  }
+
+  setupEvents() {
+    // 반전 토글
+    const btnMirror = document.getElementById('btn-mirror');
+    if (btnMirror) {
+      btnMirror.addEventListener('click', () => this.toggleMirror());
+    }
+
+    // HUD 모드 토글
+    const btnHud = document.getElementById('btn-hud-mode');
+    if (btnHud) {
+      btnHud.addEventListener('click', () => this.toggleHudMode());
+    }
+
+    // 검색 버튼
+    const btnSearch = document.getElementById('btn-search');
+    if (btnSearch) {
+      btnSearch.addEventListener('click', () => this.mapWidget.toggleSearch());
+    }
+
+    // 밝기 슬라이더
+    const brightnessSlider = document.getElementById('brightness-slider');
+    if (brightnessSlider) {
+      brightnessSlider.addEventListener('input', (e) => {
+        this.setBrightness(parseFloat(e.target.value));
+      });
+    }
+
+    // 안전 경고 확인
+    const safetyOk = document.getElementById('safety-ok');
+    if (safetyOk) {
+      safetyOk.addEventListener('click', () => {
+        const overlay = document.getElementById('safety-overlay');
+        if (overlay) overlay.style.display = 'none';
+        try { localStorage.setItem('hud-mirror-visited', 'true'); } catch(e) {}
+      });
+    }
+
+    // 네비게이션 중지 버튼
+    const navStop = document.getElementById('nav-stop');
+    if (navStop) {
+      navStop.addEventListener('click', () => {
+        if (this.mapWidget && this.mapWidget.isNavigating()) {
+          this.mapWidget._stopNavigation();
+        }
+      });
+    }
+  }
+
+  /** 좌우 반전 토글 */
+  toggleMirror() {
+    const enabled = this.mirror.toggle();
+    const app = document.getElementById('app');
+    if (enabled) {
+      app.classList.add('mirror-active');
+    } else {
+      app.classList.remove('mirror-active');
+    }
+    this.saveSettings();
+  }
+
+  /** HUD 모드 토글 — 속도 오버레이, 주행 추적, 자동 반전 활성화 */
+  toggleHudMode() {
+    this.isHudMode = !this.isHudMode;
+    const app = document.getElementById('app');
+    const btnHud = document.getElementById('btn-hud-mode');
+
+    if (this.isHudMode) {
+      app.classList.add('hud-mode');
+
+      // 위젯 시작 (GPS, 시계, 나침반)
+      this.widgets.start();
+
+      // 주행 기록 시작
+      this.widgets.trip.start();
+
+      // 속도 오버레이 표시 (CSS .hud-mode가 처리)
+      const speedOverlay = document.getElementById('speed-overlay');
+      if (speedOverlay) speedOverlay.style.display = '';
+
+      // 주행 정보 표시
+      const tripInfo = document.getElementById('trip-info');
+      if (tripInfo) tripInfo.style.display = '';
+
+      // 고도 표시
+      const altEl = document.getElementById('altitude-value');
+      if (altEl) altEl.style.display = '';
+
+      // 자동으로 반전 활성화
+      if (!this.mirror.isEnabled()) {
+        this.toggleMirror();
+      }
+
+      if (btnHud) btnHud.textContent = '🖥️ 일반';
+
+      // 지도 크기 갱신
+      this.mapWidget.invalidateSize();
+    } else {
+      app.classList.remove('hud-mode');
+
+      // 위젯 정지
+      this.widgets.stop();
+
+      // 주행 기록 정지 (데이터 유지)
+      this.widgets.trip.stop();
+
+      // 속도 오버레이 숨김
+      const speedOverlay = document.getElementById('speed-overlay');
+      if (speedOverlay) speedOverlay.style.display = 'none';
+
+      // 주행 정보 숨김
+      const tripInfo = document.getElementById('trip-info');
+      if (tripInfo) tripInfo.style.display = 'none';
+
+      if (btnHud) btnHud.textContent = '🖥️ HUD';
+    }
+
+    this.saveSettings();
+  }
+
+  /** 밝기 조절 */
+  setBrightness(level) {
+    this.brightness = level;
+    const app = document.getElementById('app');
+    if (app) {
+      app.style.filter = `brightness(${level})`;
+    }
+    this.saveSettings();
+  }
+
+  /** GPS 속도 기반 자동 HUD 모드 진입 */
+  _watchAutoHud() {
+    document.addEventListener('gpsposition', (e) => {
+      if (this.isHudMode || this._autoHudCooldown) return;
+
+      const speed = e.detail.speed;
+      if (speed !== null && speed !== undefined) {
+        const kmh = speed * 3.6;
+        if (kmh >= this._autoHudSpeedThreshold) {
+          console.log(`자동 HUD 모드 진입 (속도: ${Math.round(kmh)} km/h)`);
+          this.toggleHudMode();
+          // 쿨다운 — 중복 토글 방지
+          this._autoHudCooldown = true;
+          setTimeout(() => { this._autoHudCooldown = false; }, 30000);
+        }
+      }
+    });
+  }
+
+  /** 설정 저장 (localStorage) */
+  saveSettings() {
+    try {
+      const settings = {
+        brightness: this.brightness,
+        hudMode: this.isHudMode,
+        mirrorEnabled: this.mirror.isEnabled()
+      };
+      localStorage.setItem('hud-mirror-settings', JSON.stringify(settings));
+    } catch (e) {
+      console.warn('설정 저장 실패:', e);
+    }
+  }
+
+  /** 설정 복원 */
+  loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('hud-mirror-settings') || '{}');
+
+      // 밝기 복원
+      if (typeof saved.brightness === 'number') {
+        this.brightness = saved.brightness;
+        const slider = document.getElementById('brightness-slider');
+        if (slider) slider.value = saved.brightness;
+        this.setBrightness(saved.brightness);
+      }
+
+      // HUD 모드 복원
+      if (saved.hudMode) {
+        this.toggleHudMode();
+      } else if (saved.mirrorEnabled) {
+        // HUD 모드가 아니면 반전 상태만 복원
+        this.toggleMirror();
+      }
+    } catch (e) {
+      console.warn('설정 복원 실패:', e);
+    }
+  }
+
+  /** 첫 방문 시 안전 경고 표시 */
+  checkFirstVisit() {
+    if (!localStorage.getItem('hud-mirror-visited')) {
+      const overlay = document.getElementById('safety-overlay');
+      if (overlay) overlay.style.display = '';
+    }
+  }
+}
+
+// 앱 시작
+window.addEventListener('DOMContentLoaded', () => new HudApp().init());
+
+  </script>
+</body>
+</html>
